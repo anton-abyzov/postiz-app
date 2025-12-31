@@ -40,6 +40,25 @@ import {
 import { uniqBy } from 'lodash';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 
+/**
+ * Result type for mention lookups
+ */
+interface MentionResult {
+  id: string;
+  label: string;
+  image: string;
+  doNotCache?: boolean;
+}
+
+/**
+ * DTO for provider page save request
+ */
+interface ProviderPageDto {
+  pageId?: string;
+  accessToken?: string;
+  [key: string]: unknown;
+}
+
 @ApiTags('Integrations')
 @Controller('/integrations')
 export class IntegrationsController {
@@ -263,11 +282,18 @@ export class IntegrationsController {
       throw new Error('Invalid integration');
     }
 
-    let newList: any[] | { none: true } = [];
+    let newList: MentionResult[] | { none: true } = [];
     try {
-      newList = (await this.functionIntegration(org, body)) || [];
+      const result = await this.functionIntegration(org, body);
+      // functionIntegration can return boolean/undefined on error, filter those out
+      if (Array.isArray(result)) {
+        newList = result;
+      } else if (result && typeof result === 'object' && 'none' in result) {
+        newList = result;
+      }
+      // boolean or undefined results fall through to empty array default
     } catch (err) {
-      console.log(err);
+      // Silently handle mention lookup failures - they're not critical
     }
 
     if (!Array.isArray(newList) && newList?.none) {
@@ -283,13 +309,13 @@ export class IntegrationsController {
       await this._integrationService.insertMentions(
         getIntegration.providerIdentifier,
         newList
-          .map((p: any) => ({
+          .map((p: MentionResult) => ({
             name: p.label || '',
             username: p.id || '',
             image: p.image || '',
             doNotCache: p.doNotCache || false,
           }))
-          .filter((f: any) => f.name && !f.doNotCache)
+          .filter((f) => f.name && !f.doNotCache)
       );
     }
 
@@ -300,7 +326,7 @@ export class IntegrationsController {
           image: p.image,
           label: p.name,
         })),
-        ...(newList as any[]),
+        ...(newList as MentionResult[]),
       ],
       (p) => p.id
     ).filter((f) => f.label && f.id);
@@ -310,7 +336,7 @@ export class IntegrationsController {
   async functionIntegration(
     @GetOrgFromRequest() org: Organization,
     @Body() body: IntegrationFunctionDto
-  ): Promise<any> {
+  ): Promise<MentionResult[] | { none: true } | boolean | undefined> {
     const getIntegration = await this._integrationService.getIntegrationById(
       org.id,
       body.id
@@ -525,7 +551,7 @@ export class IntegrationsController {
   @Post('/provider/:id/connect')
   async saveProviderPage(
     @Param('id') id: string,
-    @Body() body: any,
+    @Body() body: ProviderPageDto,
     @GetOrgFromRequest() org: Organization
   ) {
     return this._integrationService.saveProviderPage(org.id, id, body);

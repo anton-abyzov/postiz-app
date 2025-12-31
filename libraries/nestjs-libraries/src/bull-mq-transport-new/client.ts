@@ -2,10 +2,11 @@ import { ClientProxy, ReadPacket, WritePacket } from '@nestjs/microservices';
 import { Queue, QueueEvents } from 'bullmq';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 import { v4 } from 'uuid';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
 @Injectable()
 export class BullMqClient extends ClientProxy {
+  private readonly logger = new Logger(BullMqClient.name);
   queues = new Map<string, Queue>();
   queueEvents = new Map<string, QueueEvents>();
 
@@ -21,9 +22,8 @@ export class BullMqClient extends ClientProxy {
     packet: ReadPacket<any>,
     callback: (packet: WritePacket<any>) => void
   ) {
-    // console.log('hello');
-    // this.publishAsync(packet, callback);
-    return () => console.log('sent');
+    // Publish is not used - we use dispatchEvent instead
+    return () => this.logger.debug('Message sent');
   }
 
   delete(pattern: string, jobId: string) {
@@ -51,10 +51,10 @@ export class BullMqClient extends ClientProxy {
 
     try {
       await job.waitUntilFinished(queueEvents);
-      console.log('success');
+      this.logger.debug(`Job ${job.id} completed successfully`);
       callback({ response: job.returnvalue, isDisposed: true });
     } catch (err) {
-      console.log('err');
+      this.logger.debug(`Job ${job.id} failed: ${String(err)}`);
       callback({ err, isDisposed: true });
     }
   }
@@ -91,7 +91,7 @@ export class BullMqClient extends ClientProxy {
   }
 
   async dispatchEvent(packet: ReadPacket<any>): Promise<any> {
-    console.log('event to dispatch: ', packet);
+    this.logger.debug(`Dispatching event to queue: ${packet.pattern}`);
     const queue = this.getQueue(packet.pattern);
     if (packet?.data?.options?.every) {
       const { every, immediately } = packet.data.options;

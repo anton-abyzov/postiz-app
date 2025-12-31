@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   ValidationPipe,
 } from '@nestjs/common';
 import { PostsRepository } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.repository';
@@ -48,6 +49,7 @@ type PostWithConditionals = Post & {
 
 @Injectable()
 export class PostsService {
+  private readonly logger = new Logger(PostsService.name);
   private storage = UploadFactory.createStorage();
   constructor(
     private _postRepository: PostsRepository,
@@ -373,13 +375,14 @@ export class PostsService {
           'fail'
         );
 
-        console.error(
-          '[Error] posting on',
-          firstPost.integration?.providerIdentifier,
-          err.identifier,
-          err.json,
-          err.body,
-          err
+        this.logger.error(
+          `Posting failed on ${firstPost.integration?.providerIdentifier}`,
+          {
+            identifier: err.identifier,
+            json: err.json,
+            body: err.body,
+            error: err,
+          }
         );
       }
 
