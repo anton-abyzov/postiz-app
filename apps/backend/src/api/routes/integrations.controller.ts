@@ -284,7 +284,14 @@ export class IntegrationsController {
 
     let newList: MentionResult[] | { none: true } = [];
     try {
-      newList = (await this.functionIntegration(org, body)) || [];
+      const result = await this.functionIntegration(org, body);
+      // functionIntegration can return boolean/undefined on error, filter those out
+      if (Array.isArray(result)) {
+        newList = result;
+      } else if (result && typeof result === 'object' && 'none' in result) {
+        newList = result;
+      }
+      // boolean or undefined results fall through to empty array default
     } catch (err) {
       // Silently handle mention lookup failures - they're not critical
     }
