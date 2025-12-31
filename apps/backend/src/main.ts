@@ -2,7 +2,7 @@ import { initializeSentry } from '@gitroom/nestjs-libraries/sentry/initialize.se
 initializeSentry('backend', true);
 
 import { loadSwagger } from '@gitroom/helpers/swagger/load.swagger';
-import { json } from 'express';
+import { json, Request, Response, NextFunction } from 'express';
 
 process.env.TZ = 'UTC';
 
@@ -45,7 +45,7 @@ async function start() {
     })
   );
 
-  app.use('/copilot/*', (req: any, res: any, next: any) => {
+  app.use('/copilot/*', (req: Request, res: Response, next: NextFunction) => {
     json({ limit: '50mb' })(req, res, next);
   });
 
