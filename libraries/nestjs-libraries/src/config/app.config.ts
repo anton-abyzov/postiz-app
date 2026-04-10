@@ -5,6 +5,8 @@
  * It replaces scattered process.env access throughout the codebase.
  */
 
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigurationException } from '../shared/exceptions/domain.exceptions';
 
@@ -486,4 +488,4 @@ export function getGlobalConfig(): AppConfigService {
  */
 export function getConfig(): AppConfiguration {
   return getGlobalConfig().config;
-}
+};
