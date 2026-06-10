@@ -515,30 +515,170 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
       finalId = lastPostId;
       finalUrl = `https://www.facebook.com/stories/${lastPostId}`;
     } else if (hasExtension(firstPost?.media?.[0]?.path, 'mp4')) {
-      const {
-        id: videoId,
-        permalink_url,
-        ...all
-      } = await (
+      const mediaUrl = firstPost?.media?.[0]?.path!;
+      let reelVideoId = '';
+      let reelFallbackReason = '';
+      let reelFinishAccepted = false;
+
+      try {
+        const { video_id, upload_url } = await (
+          await this.fetch(
+            `https://graph.facebook.com/v20.0/${id}/video_reels?upload_phase=start&access_token=${accessToken}`,
+            {
+              method: 'POST',
+            },
+            'start reel upload'
+          )
+        ).json();
+
         await this.fetch(
-          `https://graph.facebook.com/v20.0/${id}/videos?access_token=${accessToken}&fields=id,permalink_url`,
+          upload_url,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `OAuth ${accessToken}`,
+              file_url: mediaUrl,
+            },
+          },
+          'upload reel video'
+        );
+
+        await this.fetch(
+          `https://graph.facebook.com/v20.0/${id}/video_reels?access_token=${accessToken}`,
           {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              file_url: firstPost?.media?.[0]?.path!,
+              upload_phase: 'finish',
+              video_id,
+              video_state: 'PUBLISHED',
               description: firstPost.message,
-              published: true,
             }),
           },
-          'upload mp4'
-        )
-      ).json();
+          'finish reel upload'
+        );
 
-      finalUrl = 'https://www.facebook.com/reel/' + videoId;
-      finalId = videoId;
+        reelFinishAccepted = true;
+        reelVideoId = video_id;
+      } catch (err: any) {
+        // Once FINISH is accepted the reel exists on Meta's side — re-posting
+        // through the legacy endpoint could duplicate it, so fail loudly instead.
+        if (reelFinishAccepted) {
+          throw err;
+        }
+        reelFallbackReason = err?.message || 'reel upload rejected';
+      }
+
+      if (!reelFallbackReason) {
+        let reelPublished = false;
+        for (let attempt = 0; attempt < 60 && !reelPublished; attempt++) {
+          let status: any = null;
+          try {
+            status = (
+              await (
+                await this.fetch(
+                  `https://graph.facebook.com/v20.0/${reelVideoId}?fields=status&access_token=${accessToken}`,
+                  undefined,
+                  '',
+                  0,
+                  true
+                )
+              ).json()
+            )?.status;
+          } catch (err) {
+            // transient status-read failure: keep waiting, bounded by the attempt cap
+          }
+
+          if (
+            status?.video_status === 'error' ||
+            status?.processing_phase?.status === 'error' ||
+            status?.publishing_phase?.status === 'error'
+          ) {
+            // Publishing never completed, so the legacy endpoint cannot duplicate it.
+            reelFallbackReason = `reel processing failed: ${JSON.stringify(
+              status
+            )}`;
+            break;
+          }
+
+          if (
+            status?.publishing_phase?.status === 'complete' ||
+            status?.video_status === 'ready'
+          ) {
+            reelPublished = true;
+            break;
+          }
+
+          await timer(10000);
+        }
+
+        if (!reelFallbackReason && !reelPublished) {
+          throw new Error(
+            'Facebook did not confirm the reel as published within 10 minutes; check the page Reels tab before retrying.'
+          );
+        }
+
+        if (reelPublished) {
+          let permalink = '';
+          try {
+            permalink =
+              (
+                await (
+                  await this.fetch(
+                    `https://graph.facebook.com/v20.0/${reelVideoId}?fields=permalink_url&access_token=${accessToken}`,
+                    undefined,
+                    '',
+                    0,
+                    true
+                  )
+                ).json()
+              )?.permalink_url || '';
+          } catch (err) {
+            // permalink is cosmetic; fall back to the canonical reel URL
+          }
+
+          finalUrl = !permalink
+            ? 'https://www.facebook.com/reel/' + reelVideoId
+            : permalink.startsWith('http')
+            ? permalink
+            : 'https://www.facebook.com' + permalink;
+          finalId = reelVideoId;
+        }
+      }
+
+      if (reelFallbackReason) {
+        // Videos the Reels API rejects (wrong aspect ratio, too long, ...) still
+        // publish through the legacy endpoint.
+        console.log(
+          `Facebook reel publish fell back to /videos: ${reelFallbackReason}`
+        );
+        const { id: videoId, permalink_url } = await (
+          await this.fetch(
+            `https://graph.facebook.com/v20.0/${id}/videos?access_token=${accessToken}&fields=id,permalink_url`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                file_url: mediaUrl,
+                description: firstPost.message,
+                published: true,
+              }),
+            },
+            'upload mp4'
+          )
+        ).json();
+
+        finalUrl = !permalink_url
+          ? 'https://www.facebook.com/reel/' + videoId
+          : permalink_url.startsWith('http')
+          ? permalink_url
+          : 'https://www.facebook.com' + permalink_url;
+        finalId = videoId;
+      }
     } else {
       const uploadPhotos = !firstPost?.media?.length
         ? []
