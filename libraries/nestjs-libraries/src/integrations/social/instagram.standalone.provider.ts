@@ -1,3 +1,4 @@
+import { META_GRAPH_VERSION } from '@gitroom/nestjs-libraries/integrations/social/meta.api-version';
 import {
   AuthTokenDetails,
   PostDetails,
@@ -62,7 +63,7 @@ export class InstagramStandaloneProvider
       profile_picture_url = '',
     } = await (
       await fetch(
-        `https://graph.instagram.com/v21.0/me?fields=user_id,username,name,profile_picture_url&access_token=${access_token}`
+        `https://graph.instagram.com/${META_GRAPH_VERSION}/me?fields=user_id,username,name,profile_picture_url&access_token=${access_token}`
       )
     ).json();
 
@@ -137,7 +138,7 @@ export class InstagramStandaloneProvider
 
     const { user_id, name, username, profile_picture_url } = await (
       await fetch(
-        `https://graph.instagram.com/v21.0/me?fields=user_id,username,name,profile_picture_url&access_token=${access_token}`
+        `https://graph.instagram.com/${META_GRAPH_VERSION}/me?fields=user_id,username,name,profile_picture_url&access_token=${access_token}`
       )
     ).json();
 
