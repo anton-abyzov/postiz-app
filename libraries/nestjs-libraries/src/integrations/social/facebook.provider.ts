@@ -451,7 +451,7 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
           );
 
           let videoStatus = 'in_progress';
-          while (videoStatus !== 'ready') {
+          while (videoStatus !== 'upload_complete' && videoStatus !== 'ready') {
             const { status } = await (
               await this.fetch(
                 `https://graph.facebook.com/${META_GRAPH_VERSION}/${video_id}?fields=status&access_token=${accessToken}`,
@@ -465,7 +465,7 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
             if (videoStatus === 'error') {
               throw new Error('Video processing failed');
             }
-            if (videoStatus !== 'ready') {
+            if (videoStatus !== 'upload_complete' &&videoStatus !== 'ready') {
               await timer(10000);
             }
           }
@@ -795,25 +795,35 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
 
     const { data } = await (
       await fetch(
-        `https://graph.facebook.com/${META_GRAPH_VERSION}/${id}/insights?metric=page_impressions_unique,page_posts_impressions_unique,page_post_engagements,page_daily_follows,page_video_views&access_token=${accessToken}&period=day&since=${since}&until=${until}`
+        `https://graph.facebook.com/${META_GRAPH_VERSION}/${id}/insights?metric=page_total_media_view_unique,page_media_view,page_post_engagements,page_daily_follows&access_token=${accessToken}&period=day&since=${since}&until=${until}`
       )
     ).json();
+
+    // page_media_view returns paid/organic breakdowns as an object; sum them to
+    // keep the single-total UI working.
+    const sumValue = (value: any): number => {
+      if (value && typeof value === 'object') {
+        return Object.values(value as Record<string, number>).reduce(
+          (sum: number, v: number) => sum + (Number(v) || 0),
+          0
+        );
+      }
+      return Number(value) || 0;
+    };
 
     return (
       data?.map((d: any) => ({
         label:
-          d.name === 'page_impressions_unique'
+          d.name === 'page_total_media_view_unique'
             ? 'Page Impressions'
             : d.name === 'page_post_engagements'
             ? 'Posts Engagement'
             : d.name === 'page_daily_follows'
             ? 'Page followers'
-            : d.name === 'page_video_views'
-            ? 'Videos views'
-            : 'Posts Impressions',
+            : 'Media views',
         percentageChange: 5,
         data: d?.values?.map((v: any) => ({
-          total: v.value,
+          total: sumValue(v.value),
           date: dayjs(v.end_time).format('YYYY-MM-DD'),
         })),
       })) || []
@@ -832,7 +842,7 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
       // Fetch post insights from Facebook Graph API
       const { data } = await (
         await this.fetch(
-          `https://graph.facebook.com/${META_GRAPH_VERSION}/${postId}/insights?metric=post_impressions_unique,post_reactions_by_type_total,post_clicks,post_clicks_by_type&access_token=${accessToken}`
+          `https://graph.facebook.com/${META_GRAPH_VERSION}/${postId}/insights?metric=post_total_media_view_unique,post_reactions_by_type_total,post_clicks,post_clicks_by_type&access_token=${accessToken}`
         )
       ).json();
 
@@ -850,7 +860,7 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
         let total = '';
 
         switch (metric.name) {
-          case 'post_impressions_unique':
+          case 'post_total_media_view_unique':
             label = 'Impressions';
             total = String(value);
             break;
