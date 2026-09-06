@@ -12,11 +12,16 @@ import mime from 'mime';
 import TelegramBot from 'node-telegram-bot-api';
 import { Integration } from '@prisma/client';
 import striptags from 'striptags';
+import { existsSync } from 'fs';
+import { join } from 'path';
 
 const telegramBot = new TelegramBot(process.env.TELEGRAM_TOKEN!);
 // Added to support local storage posting
 const frontendURL = process.env.FRONTEND_URL || 'http://localhost:5000';
 const mediaStorage = process.env.STORAGE_PROVIDER || 'local';
+const uploadDirectory = process.env.UPLOAD_DIRECTORY || '';
+const staticDirectory =
+  process.env.NEXT_PUBLIC_UPLOAD_STATIC_DIRECTORY || '/uploads';
 
 export class TelegramProvider extends SocialAbstract implements SocialProvider {
   override maxConcurrentJob = 3; // Telegram has moderate bot API limits
@@ -142,7 +147,18 @@ export class TelegramProvider extends SocialAbstract implements SocialProvider {
     return (mediaFiles || []).map((media) => {
       let mediaUrl = media.path;
       if (mediaStorage === 'local' && mediaUrl.startsWith(frontendURL)) {
-        mediaUrl = mediaUrl.replace(frontendURL, '');
+        // Stripping the origin leaves a public web path such as
+        // "/uploads/2026/09/05/x.png". Handed to the bot library that reads as
+        // a URL with no host, and Telegram rejects it with
+        // "invalid file HTTP URL specified: URL host is empty".
+        // Re-root it onto the upload directory so the file is streamed from
+        // disk, which is also what lifts the size limits (10MB photo and 50MB
+        // file from disk, against 5MB and 20MB when Telegram fetches a URL).
+        const webPath = mediaUrl.slice(frontendURL.length);
+        const onDisk = webPath.startsWith(staticDirectory)
+          ? join(uploadDirectory, webPath.slice(staticDirectory.length))
+          : '';
+        mediaUrl = onDisk && existsSync(onDisk) ? onDisk : mediaUrl;
       }
       //get mime type to pass contentType to telegram api.
       //some photos and videos might not pass telegram api restrictions, so they are sent as documents instead of returning errors
