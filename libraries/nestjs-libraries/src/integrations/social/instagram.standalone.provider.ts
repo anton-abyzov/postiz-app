@@ -4,6 +4,7 @@ import {
   PostDetails,
   PostResponse,
   SocialProvider,
+  MediaContent,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import dayjs from 'dayjs';
@@ -41,9 +42,9 @@ export class InstagramStandaloneProvider
     return 2200;
   }
 
-  override async checkValidity(
-    [firstPost]: Array<ValidityMedia[]>,
-    settings: any
+  async checkValidity(
+    [firstPost]: MediaContent[][],
+    settings: InstagramDto
   ): Promise<string | true> {
     const audioValidity = validateInstagramAudio(
       settings?.audio,
