@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpException,
   Param,
   Post,
   Put,
@@ -32,6 +33,10 @@ import {
 } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
 import { uniqBy } from 'lodash';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
+import {
+  getProviderFunction,
+  stripProviderCredentials,
+} from '@gitroom/nestjs-libraries/integrations/provider.function.guard';
 
 @ApiTags('Integrations')
 @Controller('/integrations')
@@ -338,18 +343,22 @@ export class IntegrationsController {
       throw new Error('Invalid provider');
     }
 
-    // @ts-ignore
-    if (integrationProvider[body.name]) {
+    const providerFunction = getProviderFunction(
+      integrationProvider,
+      body.name,
+      this._integrationManager.getAllTools()[integrationProvider.identifier],
+      true
+    );
+    if (providerFunction) {
       try {
-        // @ts-ignore
-        const load = await integrationProvider[body.name](
+        const load = await providerFunction(
           getIntegration.token,
           body.data,
           getIntegration.internalId,
           getIntegration
         );
 
-        return load;
+        return stripProviderCredentials(load);
       } catch (err) {
         if (err instanceof RefreshToken) {
           const data = await this._refreshIntegrationService.refresh(
@@ -372,10 +381,10 @@ export class IntegrationsController {
           return false;
         }
 
-        return false;
+        throw new HttpException('Provider function failed', 500);
       }
     }
-    throw new Error('Function not found');
+    throw new HttpException('Function not found', 404);
   }
 
   @Post('/disable')

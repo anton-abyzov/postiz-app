@@ -294,3 +294,107 @@ test('no credential extraction method is reachable through provider function dis
   ])
     expect(provider[name]).toBeUndefined();
 });
+
+describe('Facebook Login account discovery fails explicitly', () => {
+  test.each([
+    { error: { message: 'fixture-provider-error' } },
+    {},
+    { data: null },
+    { data: {} },
+    [],
+  ])(
+    'a primary Page error or malformed envelope is not an empty account list: %j',
+    async (body) => {
+      const fetch = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(response(body));
+      await expect(new InstagramProvider().pages('USER')).rejects.toThrow(
+        /Page discovery failed/
+      );
+      expect(fetch).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test('a real empty primary Page list stays valid when optional Business Manager access is unavailable', async () => {
+    const fetch = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(response({ data: [] }))
+      .mockResolvedValueOnce(
+        response({
+          error: { message: 'Business Manager permission is optional' },
+        })
+      );
+    expect(await new InstagramProvider().pages('USER')).toEqual([]);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  test.each([
+    { id: '333', instagram_business_account: { id: '0' } },
+    { id: '0' },
+    null,
+  ])(
+    'malformed Page identities fail before account profile requests: %j',
+    async (row) => {
+      const fetch = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(response({ data: [row] }));
+      await expect(new InstagramProvider().pages('USER')).rejects.toThrow(
+        /invalid account identity/
+      );
+      expect(fetch).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test.each([
+    { error: { message: 'Profile unavailable' } },
+    { id: '999' },
+    {},
+    [],
+  ])(
+    'a profile failure or identity mismatch does not fabricate a selectable account: %j',
+    async (body) => {
+      const fetch = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(
+          response({
+            data: [{ id: '333', instagram_business_account: { id: '222' } }],
+          })
+        )
+        .mockResolvedValueOnce(response({ data: [] }))
+        .mockResolvedValueOnce(response(body));
+      await expect(new InstagramProvider().pages('USER')).rejects.toThrow(
+        /confirm the requested account identity/
+      );
+      expect(fetch).toHaveBeenCalledTimes(3);
+    }
+  );
+
+  test.each([
+    [
+      {
+        id: '222',
+        name: '',
+        username: 'fixture_account',
+        profile_picture_url: null,
+      },
+      'fixture_account',
+    ],
+    [{ id: '222', name: '', username: '', profile_picture_url: null }, '222'],
+  ])(
+    'valid blank display metadata has a stable account and placeholder',
+    async (profile, name) => {
+      jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(
+          response({
+            data: [{ id: '333', instagram_business_account: { id: '222' } }],
+          })
+        )
+        .mockResolvedValueOnce(response({ data: [] }))
+        .mockResolvedValueOnce(response(profile));
+      expect(await new InstagramProvider().pages('USER')).toEqual([
+        { id: '222', pageId: '333', name, picture: { data: { url: '' } } },
+      ]);
+    }
+  );
+});

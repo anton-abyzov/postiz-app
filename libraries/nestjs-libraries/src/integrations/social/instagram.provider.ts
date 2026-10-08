@@ -510,12 +510,22 @@ export class InstagramProvider
       let nextUrl: string | undefined = startUrl;
       while (nextUrl) {
         const response = await (await fetch(nextUrl)).json();
-        if (response.data) {
-          for (const page of response.data) {
-            if (!seenPageIds.has(page.id)) {
-              seenPageIds.add(page.id);
-              allFacebookPages.push(page);
-            }
+        if (response?.error || !Array.isArray(response?.data))
+          pageSelectionFailure(
+            'Facebook Page discovery failed; check the connection and Page permissions'
+          );
+        for (const page of response.data) {
+          if (
+            !isInstagramAudioId(page?.id) ||
+            (page.instagram_business_account != null &&
+              !isInstagramAudioId(page.instagram_business_account?.id))
+          )
+            pageSelectionFailure(
+              'Facebook Page discovery returned an invalid account identity'
+            );
+          if (!seenPageIds.has(page.id)) {
+            seenPageIds.add(page.id);
+            allFacebookPages.push(page);
           }
         }
         nextUrl = response.paging?.next;
@@ -565,14 +575,29 @@ export class InstagramProvider
       allFacebookPages
         .filter((f: any) => f.instagram_business_account)
         .map(async (p: any) => {
+          const profile = await (
+            await fetch(
+              `https://graph.facebook.com/${META_GRAPH_VERSION}/${p.instagram_business_account.id}?fields=id,name,username,profile_picture_url&access_token=${encodedUserToken}`
+            )
+          ).json();
+          if (profile?.error || profile?.id !== p.instagram_business_account.id)
+            pageSelectionFailure(
+              'Instagram account discovery failed to confirm the requested account identity'
+            );
           return {
             pageId: p.id,
-            ...(await (
-              await fetch(
-                `https://graph.facebook.com/${META_GRAPH_VERSION}/${p.instagram_business_account.id}?fields=name,profile_picture_url&access_token=${encodedUserToken}`
-              )
-            ).json()),
-            id: p.instagram_business_account.id,
+            id: profile.id,
+            name:
+              typeof profile.name === 'string' && profile.name.trim()
+                ? profile.name
+                : typeof profile.username === 'string' &&
+                  profile.username.trim()
+                ? profile.username
+                : profile.id,
+            profile_picture_url:
+              typeof profile.profile_picture_url === 'string'
+                ? profile.profile_picture_url
+                : '',
           };
         })
     );

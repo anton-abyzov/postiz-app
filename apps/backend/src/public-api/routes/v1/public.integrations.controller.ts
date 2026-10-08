@@ -61,6 +61,10 @@ import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integration
 import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
+import {
+  getProviderFunction,
+  stripProviderCredentials,
+} from '@gitroom/nestjs-libraries/integrations/provider.function.guard';
 
 type IntegrationSettingsResponse = {
   output: {
@@ -471,29 +475,25 @@ export class PublicIntegrationsController {
       throw new HttpException({ msg: 'Integration provider not found' }, 404);
     }
 
-    const tools = this._integrationManager.getAllTools();
-    if (
-      // @ts-ignore
-      !tools[integrationProvider.identifier]?.some(
-        (p: any) => p.methodName === body.methodName
-      ) ||
-      // @ts-ignore
-      !integrationProvider[body.methodName]
-    ) {
+    const providerFunction = getProviderFunction(
+      integrationProvider,
+      body.methodName,
+      this._integrationManager.getAllTools()[integrationProvider.identifier]
+    );
+    if (!providerFunction) {
       throw new HttpException({ msg: 'Tool not found' }, 404);
     }
 
     while (true) {
       try {
-        // @ts-ignore
-        const result = await integrationProvider[body.methodName](
+        const result = await providerFunction(
           getIntegration.token,
           body.data || {},
           getIntegration.internalId,
           getIntegration
         );
 
-        return { output: result };
+        return { output: stripProviderCredentials(result) };
       } catch (err) {
         if (err instanceof RefreshToken) {
           const data = await this._refreshIntegrationService.refresh(
