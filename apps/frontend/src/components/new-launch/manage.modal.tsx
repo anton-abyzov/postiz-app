@@ -452,7 +452,10 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
             data-testid="post-composer-editor"
             className="flex flex-col flex-1 min-h-0 min-w-0 xl:border-e border-newBorder"
           >
-            <div className="bg-newBgColor h-[65px] shrink-0 rounded-t-[20px] xl:rounded-s-[20px] xl:rounded-tr-none !rounded-b-[0] flex items-center gap-[12px] px-[12px] xl:px-[20px] text-[20px] font-[600]">
+            <div
+              data-testid="post-composer-header"
+              className="bg-newBgColor h-[65px] shrink-0 rounded-t-[20px] xl:rounded-s-[20px] xl:rounded-se-none !rounded-b-[0] flex items-center gap-[12px] px-[12px] xl:px-[20px] text-[20px] font-[600]"
+            >
               <div className="flex-1 min-w-0 xl:flex-none">
                 {t('create_post_title', 'Create Post')}
               </div>
@@ -594,6 +597,29 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
             {!dummy && (
               <RepeatComponent repeat={repeater} onChange={setRepeater} />
             )}
+            <CopilotPopup
+              className="max-xl:!static max-xl:ms-auto"
+              hitEscapeToClose={false}
+              clickOutsideToClose={true}
+              instructions={`
+You are an assistant that help the user to schedule their social media posts,
+Here are the things you can do:
+- Add a new comment / post to the list of posts
+- Delete a comment / post from the list of posts
+- Add content to the comment / post
+- Activate or deactivate the comment / post
+
+Post content can be added using the addPostContentFor{num} function.
+After using the addPostFor{num} it will create a new addPostContentFor{num+ 1} function.
+`}
+              labels={{
+                title: t('your_assistant', 'Your Assistant'),
+                initial: t(
+                  'assistant_initial_message',
+                  'Hi! I can help you to refine your social media posts.'
+                ),
+              }}
+            />
           </div>
           <div className="w-full min-w-0 xl:w-auto px-[12px] xl:ps-0 xl:pe-[20px] flex flex-wrap xl:flex-nowrap items-center justify-end gap-[8px]">
             {existingData?.integration && (
@@ -694,28 +720,6 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
           </div>
         </div>
       </div>
-      <CopilotPopup
-        hitEscapeToClose={false}
-        clickOutsideToClose={true}
-        instructions={`
-You are an assistant that help the user to schedule their social media posts,
-Here are the things you can do:
-- Add a new comment / post to the list of posts
-- Delete a comment / post from the list of posts
-- Add content to the comment / post
-- Activate or deactivate the comment / post
-
-Post content can be added using the addPostContentFor{num} function.
-After using the addPostFor{num} it will create a new addPostContentFor{num+ 1} function.
-`}
-        labels={{
-          title: t('your_assistant', 'Your Assistant'),
-          initial: t(
-            'assistant_initial_message',
-            'Hi! I can help you to refine your social media posts.'
-          ),
-        }}
-      />
     </div>
   );
 };
