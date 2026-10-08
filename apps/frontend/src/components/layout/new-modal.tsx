@@ -151,7 +151,9 @@ export const Component: FC<{
           >
             <div
               className={clsx(
-                modal.fullScreen ? 'w-full h-full flex-1' : 'mx-auto py-[48px]'
+                modal.fullScreen
+                  ? 'w-full h-full flex-1 max-xl:!w-full'
+                  : 'mx-auto py-[48px]'
               )}
               {...(modal.size && { style: { width: modal.size } })}
             >

@@ -17,8 +17,14 @@ export interface InstagramAudioResult {
 // Plain stored tokens may already be User tokens; Meta verifies them against user_id.
 // Keep token extraction outside the provider: legacy function dispatch can call class methods.
 export function instagramAudioUserToken(token: string): string {
-  const [storedToken, userToken] = token?.split('___') || [];
-  return userToken || storedToken || '';
+  const tokens = typeof token === 'string' ? token.split('___') : [];
+  // A known pair must contain its User token; only legacy plain storage can
+  // fall back to the sole credential. Never reuse a Page token as a missing User.
+  return (tokens.length > 1 ? tokens[1] : tokens[0]) || '';
+}
+
+export function instagramPageToken(token: string): string {
+  return typeof token === 'string' ? token.split('___')[0] : '';
 }
 
 export const isInstagramAudioId = (value: unknown): value is string =>

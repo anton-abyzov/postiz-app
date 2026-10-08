@@ -61,7 +61,7 @@ export const InstagramAudioSelector: FC<{
   const player = useRef<HTMLAudioElement | undefined>(undefined);
   const selector = useRef<HTMLDivElement | null>(null);
   const control =
-    'min-h-[44px] px-[12px] bg-newBgColorInner border-newTableBorder border rounded-[8px] text-[14px]';
+    'min-h-[44px] max-w-full shrink-0 px-[12px] bg-newBgColorInner border-newTableBorder border rounded-[8px] text-[14px]';
   const stopPreview = useCallback(() => {
     player.current?.pause();
     player.current = undefined;
@@ -193,7 +193,7 @@ export const InstagramAudioSelector: FC<{
 
   return (
     <div
-      className="flex flex-col gap-[10px]"
+      className="flex flex-col min-w-0 w-full gap-[10px]"
       ref={selector}
       data-testid="instagram-audio-selector"
     >
@@ -206,15 +206,15 @@ export const InstagramAudioSelector: FC<{
       </p>
       {value?.id && (
         <div className="flex flex-col gap-[12px] bg-newBgColorInner border-newTableBorder border rounded-[8px] p-[12px]">
-          <div className="flex items-center gap-[12px]">
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-[12px]">
             {!!value.image && (
               <img
                 src={value.image}
                 alt=""
-                className="w-[42px] h-[42px] rounded-[8px] object-cover"
+                className="w-[42px] h-[42px] shrink-0 rounded-[8px] object-cover"
               />
             )}
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-[140px] sm:min-w-0">
               <div className="text-[14px] break-words">
                 {value.title || value.id}
               </div>
@@ -307,7 +307,7 @@ export const InstagramAudioSelector: FC<{
               </option>
             </select>
             <input
-              className={`${control} flex-1 min-w-0 w-full bg-transparent outline-none`}
+              className={`${control} flex-1 min-w-[160px] max-w-full w-full bg-transparent outline-none`}
               aria-label={t('instagram_search_audio', 'Search artist or track')}
               placeholder={t(
                 'instagram_search_audio_hint',
@@ -373,18 +373,18 @@ export const InstagramAudioSelector: FC<{
                 .map((track) => (
                   <div
                     key={track.id}
-                    className="flex items-center gap-[8px] p-[8px] border-b border-newTableBorder last:border-b-0"
+                    className="flex flex-wrap sm:flex-nowrap items-center gap-[8px] p-[8px] border-b border-newTableBorder last:border-b-0"
                   >
                     {!!track.image && (
                       <img
                         src={track.image}
                         alt=""
-                        className="w-[36px] h-[36px] rounded-[8px] object-cover"
+                        className="w-[36px] h-[36px] shrink-0 rounded-[8px] object-cover"
                       />
                     )}
                     <button
                       type="button"
-                      className="flex-1 min-w-0 text-left min-h-[44px]"
+                      className="flex-1 min-w-[140px] sm:min-w-0 text-left min-h-[44px]"
                       onClick={() => select(track)}
                     >
                       <div className="text-[14px] break-words">
