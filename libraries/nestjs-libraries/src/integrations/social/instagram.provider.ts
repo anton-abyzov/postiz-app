@@ -6,6 +6,7 @@ import {
   PostResponse,
   SocialProvider,
   MediaContent,
+  FetchPageInformationResult,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { timer } from '@gitroom/helpers/utils/timer';
@@ -22,6 +23,7 @@ import { hasExtension } from '@gitroom/helpers/utils/has.extension';
 import {
   instagramAudioConfiguration,
   instagramAudioUserToken,
+  instagramPageToken,
   isInstagramAudioId,
   isInstagramAudioVideo,
   normalizeInstagramAudio,
@@ -32,6 +34,10 @@ import {
 
 function audioFailure(message: string): never {
   throw new BadBody('instagram-audio', '{}', '{}', message);
+}
+
+function pageSelectionFailure(message: string): never {
+  throw new BadBody('instagram-connect', '{}', '{}', message);
 }
 
 async function readInstagramAudio(
@@ -398,9 +404,14 @@ export class InstagramProvider
       (p) => p.id === requiredId
     );
 
+    if (!findPage?.pageId)
+      pageSelectionFailure(
+        'The selected Instagram account is not linked to an accessible Facebook Page; reconnect and grant access to that Page'
+      );
+
     const information = await this.fetchPageInformation(accessToken, {
       id: requiredId,
-      pageId: findPage?.pageId!,
+      pageId: findPage.pageId,
     });
 
     return {
@@ -486,6 +497,12 @@ export class InstagramProvider
   }
 
   async pages(accessToken: string) {
+    const userToken = instagramAudioUserToken(accessToken);
+    if (!userToken.trim())
+      pageSelectionFailure(
+        'A Facebook User access token is required to discover Instagram accounts'
+      );
+    const encodedUserToken = encodeURIComponent(userToken);
     const seenPageIds = new Set<string>();
     const allFacebookPages: any[] = [];
 
@@ -507,7 +524,7 @@ export class InstagramProvider
 
     // Fetch pages the user explicitly shared during the OAuth dialog
     await fetchPaginated(
-      `https://graph.facebook.com/${META_GRAPH_VERSION}/me/accounts?fields=id,instagram_business_account,username,name,picture.type(large)&limit=100&access_token=${accessToken}`
+      `https://graph.facebook.com/${META_GRAPH_VERSION}/me/accounts?fields=id,instagram_business_account,username,name,picture.type(large)&limit=100&access_token=${encodedUserToken}`
     );
 
     // Also fetch pages via Business Manager API to discover pages
@@ -515,7 +532,7 @@ export class InstagramProvider
     try {
       let bizUrl:
         | string
-        | undefined = `https://graph.facebook.com/${META_GRAPH_VERSION}/me/businesses?access_token=${accessToken}`;
+        | undefined = `https://graph.facebook.com/${META_GRAPH_VERSION}/me/businesses?access_token=${encodedUserToken}`;
 
       while (bizUrl) {
         const bizResponse = await (await fetch(bizUrl)).json();
@@ -523,7 +540,7 @@ export class InstagramProvider
           for (const business of bizResponse.data) {
             try {
               await fetchPaginated(
-                `https://graph.facebook.com/${META_GRAPH_VERSION}/${business.id}/owned_pages?fields=id,instagram_business_account,username,name,picture.type(large)&limit=100&access_token=${accessToken}`
+                `https://graph.facebook.com/${META_GRAPH_VERSION}/${business.id}/owned_pages?fields=id,instagram_business_account,username,name,picture.type(large)&limit=100&access_token=${encodedUserToken}`
               );
             } catch {
               // Continue with other businesses
@@ -531,7 +548,7 @@ export class InstagramProvider
 
             try {
               await fetchPaginated(
-                `https://graph.facebook.com/${META_GRAPH_VERSION}/${business.id}/client_pages?fields=id,instagram_business_account,username,name,picture.type(large)&limit=100&access_token=${accessToken}`
+                `https://graph.facebook.com/${META_GRAPH_VERSION}/${business.id}/client_pages?fields=id,instagram_business_account,username,name,picture.type(large)&limit=100&access_token=${encodedUserToken}`
               );
             } catch {
               // Continue with other businesses
@@ -552,7 +569,7 @@ export class InstagramProvider
             pageId: p.id,
             ...(await (
               await fetch(
-                `https://graph.facebook.com/${META_GRAPH_VERSION}/${p.instagram_business_account.id}?fields=name,profile_picture_url&access_token=${accessToken}`
+                `https://graph.facebook.com/${META_GRAPH_VERSION}/${p.instagram_business_account.id}?fields=name,profile_picture_url&access_token=${encodedUserToken}`
               )
             ).json()),
             id: p.instagram_business_account.id,
@@ -571,25 +588,59 @@ export class InstagramProvider
   async fetchPageInformation(
     accessToken: string,
     data: { pageId: string; id: string }
-  ) {
-    const { access_token, ...all } = await (
+  ): Promise<FetchPageInformationResult> {
+    const userToken = instagramAudioUserToken(accessToken);
+    if (
+      !userToken.trim() ||
+      !isInstagramAudioId(data?.pageId) ||
+      !isInstagramAudioId(data?.id)
+    )
+      pageSelectionFailure(
+        'Select a valid Instagram account and its linked Facebook Page'
+      );
+    const encodedUserToken = encodeURIComponent(userToken);
+    const page = await (
       await fetch(
-        `https://graph.facebook.com/${META_GRAPH_VERSION}/${data.pageId}?fields=access_token,name,picture.type(large)&access_token=${accessToken}`
+        `https://graph.facebook.com/${META_GRAPH_VERSION}/${data.pageId}?fields=id,access_token,name,picture.type(large),instagram_business_account&access_token=${encodedUserToken}`
       )
     ).json();
 
-    const { id, name, profile_picture_url, username } = await (
+    if (
+      page?.error ||
+      page?.id !== data.pageId ||
+      page?.instagram_business_account?.id !== data.id ||
+      typeof page?.access_token !== 'string' ||
+      !page.access_token.trim()
+    )
+      pageSelectionFailure(
+        'The selected Instagram account is not linked to an accessible Facebook Page with a valid Page token; reconnect and grant access to that Page'
+      );
+
+    const account = await (
       await fetch(
-        `https://graph.facebook.com/${META_GRAPH_VERSION}/${data.id}?fields=username,name,profile_picture_url&access_token=${accessToken}`
+        `https://graph.facebook.com/${META_GRAPH_VERSION}/${data.id}?fields=username,name,profile_picture_url&access_token=${encodedUserToken}`
       )
     ).json();
+    if (
+      account?.error ||
+      account?.id !== data.id ||
+      typeof account?.username !== 'string' ||
+      !account.username.trim()
+    )
+      pageSelectionFailure(
+        'Instagram did not confirm the selected account; reconnect and select that account again'
+      );
 
     return {
-      id,
-      name,
-      picture: profile_picture_url,
-      access_token,
-      username,
+      id: account.id,
+      name: typeof account.name === 'string' ? account.name : account.username,
+      picture:
+        typeof account.profile_picture_url === 'string'
+          ? account.profile_picture_url
+          : '',
+      // Page actions keep their Page token; the Audio API retains the User token.
+      access_token: `${page.access_token}___${userToken}`,
+      username: account.username,
     };
   }
 
@@ -609,7 +660,7 @@ export class InstagramProvider
       type === 'graph.facebook.com'
     );
     if (audioValidity !== true) audioFailure(audioValidity);
-    let publishAccessToken = accessToken.split('___')[0];
+    let publishAccessToken = instagramPageToken(accessToken);
     if (audio !== undefined && audio !== null) {
       if (
         integration?.providerIdentifier !== 'instagram' ||
@@ -855,13 +906,16 @@ export class InstagramProvider
     integration: Integration,
     type = 'graph.facebook.com'
   ): Promise<PostResponse[]> {
+    const encodedPageToken = encodeURIComponent(
+      instagramPageToken(accessToken)
+    );
     const [commentPost] = postDetails;
 
     const { id: commentId } = await (
       await this.fetch(
         `https://${type}/${META_GRAPH_VERSION}/${postId}/comments?message=${encodeURIComponent(
           commentPost.message
-        )}&access_token=${accessToken}`,
+        )}&access_token=${encodedPageToken}`,
         {
           method: 'POST',
         }
@@ -871,7 +925,7 @@ export class InstagramProvider
     // Get the permalink from the parent post
     const { permalink } = await (
       await this.fetch(
-        `https://${type}/${META_GRAPH_VERSION}/${postId}?fields=permalink&access_token=${accessToken}`
+        `https://${type}/${META_GRAPH_VERSION}/${postId}?fields=permalink&access_token=${encodedPageToken}`
       )
     ).json();
 
@@ -933,18 +987,21 @@ export class InstagramProvider
     date: number,
     type = 'graph.facebook.com'
   ): Promise<AnalyticsData[]> {
+    const encodedPageToken = encodeURIComponent(
+      instagramPageToken(accessToken)
+    );
     const until = dayjs().startOf('day').unix();
     const since = dayjs().subtract(date, 'day').unix();
 
     const { data, ...all } = await (
       await fetch(
-        `https://${type}/${META_GRAPH_VERSION}/${id}/insights?metric=follower_count,reach&access_token=${accessToken}&period=day&since=${since}&until=${until}`
+        `https://${type}/${META_GRAPH_VERSION}/${id}/insights?metric=follower_count,reach&access_token=${encodedPageToken}&period=day&since=${since}&until=${until}`
       )
     ).json();
 
     const { data: data2, ...all2 } = await (
       await fetch(
-        `https://${type}/${META_GRAPH_VERSION}/${id}/insights?metric_type=total_value&metric=likes,views,comments,shares,saves,replies&access_token=${accessToken}&period=day&since=${since}&until=${until}`
+        `https://${type}/${META_GRAPH_VERSION}/${id}/insights?metric_type=total_value&metric=likes,views,comments,shares,saves,replies&access_token=${encodedPageToken}&period=day&since=${since}&until=${until}`
       )
     ).json();
     const analytics = [];
@@ -984,7 +1041,9 @@ export class InstagramProvider
     return this.fetch(
       `https://graph.facebook.com/${META_GRAPH_VERSION}/music/search?q=${encodeURIComponent(
         data.q
-      )}&access_token=${accessToken}`
+      )}&access_token=${encodeURIComponent(
+        instagramAudioUserToken(accessToken)
+      )}`
     );
   }
 
@@ -1093,13 +1152,16 @@ export class InstagramProvider
     date: number,
     type = 'graph.facebook.com'
   ): Promise<AnalyticsData[]> {
+    const encodedPageToken = encodeURIComponent(
+      instagramPageToken(accessToken)
+    );
     const today = dayjs().format('YYYY-MM-DD');
 
     try {
       // Fetch media insights from Instagram Graph API
       const { data } = await (
         await this.fetch(
-          `https://${type}/${META_GRAPH_VERSION}/${postId}/insights?metric=views,reach,saved,likes,comments,shares&access_token=${accessToken}`
+          `https://${type}/${META_GRAPH_VERSION}/${postId}/insights?metric=views,reach,saved,likes,comments,shares&access_token=${encodedPageToken}`
         )
       ).json();
 
