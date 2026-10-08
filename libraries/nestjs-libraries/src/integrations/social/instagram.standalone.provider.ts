@@ -12,6 +12,7 @@ import { InstagramDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-set
 import { InstagramProvider } from '@gitroom/nestjs-libraries/integrations/social/instagram.provider';
 import { Integration } from '@prisma/client';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
+import { validateInstagramAudio } from './instagram.audio';
 
 const instagramProvider = new InstagramProvider();
 
@@ -32,12 +33,26 @@ export class InstagramStandaloneProvider
     'instagram_business_manage_comments',
     'instagram_business_manage_insights',
   ];
-    override maxConcurrentJob = 200; // Instagram standalone has stricter limits
+  override maxConcurrentJob = 200; // Instagram standalone has stricter limits
   dto = InstagramDto;
 
   editor = 'normal' as const;
   maxLength() {
     return 2200;
+  }
+
+  override async checkValidity(
+    [firstPost]: Array<ValidityMedia[]>,
+    settings: any
+  ): Promise<string | true> {
+    const audioValidity = validateInstagramAudio(
+      settings?.audio,
+      settings?.post_type,
+      firstPost,
+      false
+    );
+    if (audioValidity !== true) return audioValidity;
+    return instagramProvider.checkValidity([firstPost], settings);
   }
 
   public override handleErrors(

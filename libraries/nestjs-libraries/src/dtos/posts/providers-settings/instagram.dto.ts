@@ -3,7 +3,11 @@ import {
   IsArray,
   IsDefined,
   IsIn,
-  IsNumber,
+  IsInt,
+  IsBoolean,
+  IsObject,
+  Matches,
+  ValidateIf,
   IsString,
   Max,
   Min,
@@ -18,8 +22,17 @@ export class Collaborators {
 }
 
 export class InstagramAudio {
+  @ValidateIf((o, value) => value !== undefined)
+  @IsIn(['music', 'original_sound'])
+  audioType?: 'music' | 'original_sound';
+
+  @ValidateIf((o, value) => value !== undefined)
+  @IsBoolean()
+  use_for_ads?: boolean;
+
   @IsDefined()
   @IsString()
+  @Matches(/^[1-9]\d*$/)
   id: string;
 
   @IsOptional()
@@ -34,16 +47,14 @@ export class InstagramAudio {
   @IsString()
   image?: string;
 
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
+  @ValidateIf((o, value) => value !== undefined)
+  @IsInt()
   @Min(0)
   @Max(100)
   audio_volume?: number;
 
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
+  @ValidateIf((o, value) => value !== undefined)
+  @IsInt()
   @Min(0)
   @Max(100)
   video_volume?: number;
@@ -67,6 +78,7 @@ export class InstagramDto {
   collaborators: Collaborators[];
 
   @Type(() => InstagramAudio)
+  @IsObject()
   @ValidateNested()
   @IsOptional()
   audio?: InstagramAudio;
