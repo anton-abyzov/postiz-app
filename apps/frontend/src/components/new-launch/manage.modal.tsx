@@ -133,7 +133,7 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
             className="text-white absolute -end-[5px] -bottom-[5px]"
           />
         </div>
-        <div>
+        <div className="min-w-0 break-words">
           {currentIntegration.name} {t('channel_settings', 'Settings')}
         </div>
       </div>
@@ -345,9 +345,7 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
               messages: checkAllValid
                 // platforms that remove links won't keep shortlinks either
                 .filter((p: any) => !p?.integration?.stripLinks)
-                .flatMap((p: any) =>
-                  p.values.flatMap((a: any) => a.content)
-                ),
+                .flatMap((p: any) => p.values.flatMap((a: any) => a.content)),
             }),
           })
         ).json();
@@ -447,27 +445,43 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
   );
 
   return (
-    <div className="w-full h-full flex-1 p-[40px] flex relative">
-      <div className="flex flex-1 bg-newBgColorInner rounded-[20px] flex-col">
-        <div className="flex-1 flex">
-          <div className="flex flex-col flex-1 border-e border-newBorder">
-            <div className="bg-newBgColor h-[65px] rounded-s-[20px] !rounded-b-[0] flex items-center gap-[12px] px-[20px] text-[20px] font-[600]">
-              {t('create_post_title', 'Create Post')}
+    <div className="w-full h-full min-h-0 min-w-0 flex-1 p-[12px] xl:p-[40px] flex relative">
+      <div className="flex flex-1 min-h-0 min-w-0 bg-newBgColorInner rounded-[20px] flex-col">
+        <div className="flex-1 min-h-0 min-w-0 flex">
+          <div
+            data-testid="post-composer-editor"
+            className="flex flex-col flex-1 min-h-0 min-w-0 xl:border-e border-newBorder"
+          >
+            <div className="bg-newBgColor h-[65px] shrink-0 rounded-t-[20px] xl:rounded-s-[20px] xl:rounded-tr-none !rounded-b-[0] flex items-center gap-[12px] px-[12px] xl:px-[20px] text-[20px] font-[600]">
+              <div className="flex-1 min-w-0 xl:flex-none">
+                {t('create_post_title', 'Create Post')}
+              </div>
               <CreationMethodBadge
                 creationMethod={existingData?.posts?.[0]?.creationMethod}
                 size="sm"
               />
+              <button
+                type="button"
+                aria-label={t('close', 'Close')}
+                className="xl:hidden shrink-0 w-[44px] h-[44px] flex items-center justify-center"
+                onClick={askClose}
+              >
+                <CloseIcon className="text-[#A3A3A3]" />
+              </button>
             </div>
-            <div className="flex-1 flex flex-col gap-[16px]">
+            <div className="flex-1 min-h-0 min-w-0 flex flex-col gap-[16px]">
               <div
-                className={clsx('flex-1 relative', showSettings && 'hidden')}
+                className={clsx(
+                  'flex-1 min-h-0 min-w-0 relative',
+                  showSettings && 'hidden'
+                )}
               >
                 <div
                   id="social-content"
-                  className="gap-[32px] flex flex-col pe-[8px] pt-[20px] ps-[20px] absolute top-0 left-0 w-full h-full overflow-x-hidden overflow-y-scroll scrollbar scrollbar-thumb-newColColor scrollbar-track-newBgColorInner"
+                  className="gap-[32px] flex flex-col pe-[8px] pt-[20px] ps-[12px] xl:ps-[20px] absolute top-0 left-0 w-full h-full overflow-x-hidden overflow-y-scroll scrollbar scrollbar-thumb-newColColor scrollbar-track-newBgColorInner"
                 >
-                  <div className="flex w-full">
-                    <div className="flex flex-1">
+                  <div className="flex w-full min-w-0 flex-wrap gap-[8px] xl:flex-nowrap xl:gap-0">
+                    <div className="flex flex-1 min-w-0">
                       <PicksSocialsComponent toolTip={true} />
                     </div>
                     <div>
@@ -497,12 +511,12 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
               <div
                 id="wrapper-settings"
                 className={clsx(
-                  'pb-[20px] px-[20px] select-none',
+                  'pb-[20px] px-[12px] xl:px-[20px] min-h-0 min-w-0 select-none',
                   showSettings && 'flex-1 flex pt-[20px]',
                   current === 'global' && 'hidden'
                 )}
               >
-                <div className="flex-1 flex flex-col rounded-[12px] gap-[12px] overflow-hidden bg-newSettings">
+                <div className="flex-1 min-h-0 min-w-0 flex flex-col rounded-[12px] gap-[12px] overflow-hidden bg-newSettings">
                   <div
                     onClick={() => setShowSettings(!showSettings)}
                     className={clsx(
@@ -510,7 +524,7 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
                       showSettings ? '!rounded-b-none' : ''
                     )}
                   >
-                    <div className="flex-1 text-[14px] font-[600] text-white">
+                    <div className="flex-1 min-w-0 text-[14px] font-[600] text-white">
                       {currentIntegrationText}
                     </div>
                     <div>
@@ -523,7 +537,7 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
                   <div
                     className={clsx(
                       !showSettings ? 'hidden' : 'flex-1',
-                      'text-[14px] text-textColor font-[500] relative'
+                      'text-[14px] text-textColor font-[500] min-h-0 min-w-0 relative'
                     )}
                   >
                     <div className="absolute left-0 top-0 w-full h-full flex flex-col overflow-x-hidden overflow-y-auto scrollbar scrollbar-thumb-newBgColorInner scrollbar-track-newColColor">
@@ -540,7 +554,11 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
               </div>
             </div>
           </div>
-          <div className="w-[580px] flex flex-col">
+          {/* Providers stay mounted so their settings portals and validation still work. */}
+          <div
+            data-testid="post-composer-preview"
+            className="hidden xl:flex w-[580px] flex-col"
+          >
             <div className="bg-newBgColor h-[65px] rounded-e-[20px] !rounded-b-[0] flex items-center px-[20px] text-[20px] font-[600]">
               <div className="flex-1">{t('post_preview', 'Post Preview')}</div>
               <div className="cursor-pointer">
@@ -557,8 +575,11 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
             </div>
           </div>
         </div>
-        <div className="select-none h-[84px] py-[20px] border-t border-newBorder flex items-center">
-          <div className="flex-1 flex ps-[20px] gap-[8px]">
+        <div
+          data-testid="post-composer-footer"
+          className="select-none shrink-0 py-[12px] xl:h-[84px] xl:py-[20px] border-t border-newBorder flex flex-wrap xl:flex-nowrap items-center gap-[8px] xl:gap-0"
+        >
+          <div className="w-full xl:w-auto xl:flex-1 flex flex-wrap xl:flex-nowrap px-[12px] xl:ps-[20px] xl:pe-0 gap-[8px]">
             {!dummy && (
               <TagsComponent
                 name="tags"
@@ -574,7 +595,7 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
               <RepeatComponent repeat={repeater} onChange={setRepeater} />
             )}
           </div>
-          <div className="pe-[20px] flex items-center justify-end gap-[8px]">
+          <div className="w-full min-w-0 xl:w-auto px-[12px] xl:ps-0 xl:pe-[20px] flex flex-wrap xl:flex-nowrap items-center justify-end gap-[8px]">
             {existingData?.integration && (
               <button
                 onClick={deletePost}
@@ -586,14 +607,16 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
                 <div>{t('delete_post', 'Delete Post')}</div>
               </button>
             )}
-            <DatePicker onChange={setDate} date={date} />
+            <div className="w-full xl:w-auto xl:flex-1">
+              <DatePicker onChange={setDate} date={date} />
+            </div>
             {!addEditSets && (
               <button
                 disabled={
                   selectedIntegrations.length === 0 || loading || locked
                 }
                 onClick={schedule('draft')}
-                className="relative cursor-pointer disabled:cursor-not-allowed px-[20px] h-[44px] bg-btnSimple justify-center items-center flex rounded-[8px] text-[15px] font-[600]"
+                className="relative flex-1 min-w-0 xl:flex-none cursor-pointer disabled:cursor-not-allowed px-[20px] min-h-[44px] py-[8px] xl:py-0 xl:h-[44px] bg-btnSimple justify-center items-center flex rounded-[8px] text-[15px] font-[600]"
               >
                 {loading && (
                   <div className="absolute left-[50%] top-[50%] -translate-y-[50%] -translate-x-[50%]">
@@ -607,7 +630,7 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
             )}
             {addEditSets && (
               <button
-                className="text-white text-[15px] font-[600] min-w-[180px] btnSub disabled:cursor-not-allowed disabled:opacity-80 outline-none gap-[8px] flex justify-center items-center h-[44px] rounded-[8px] bg-[#612BD3] ps-[20px] pe-[16px]"
+                className="text-white text-[15px] font-[600] flex-1 min-w-0 xl:flex-none xl:min-w-[180px] btnSub disabled:cursor-not-allowed disabled:opacity-80 outline-none gap-[8px] flex justify-center items-center min-h-[44px] py-[8px] xl:py-0 xl:h-[44px] rounded-[8px] bg-[#612BD3] ps-[20px] pe-[16px]"
                 disabled={
                   selectedIntegrations.length === 0 || loading || locked
                 }
@@ -617,13 +640,13 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
               </button>
             )}
             {!addEditSets && (
-              <div className="group cursor-pointer relative">
+              <div className="group cursor-pointer relative flex-1 min-w-0 xl:flex-none">
                 <button
                   disabled={
                     selectedIntegrations.length === 0 || loading || locked
                   }
                   onClick={schedule('schedule')}
-                  className="text-white relative min-w-[180px] btnSub disabled:cursor-not-allowed disabled:opacity-80 outline-none gap-[8px] flex justify-center items-center h-[44px] rounded-[8px] bg-[#612BD3] ps-[20px] pe-[16px]"
+                  className="text-white relative w-full xl:w-auto min-w-0 xl:min-w-[180px] btnSub disabled:cursor-not-allowed disabled:opacity-80 outline-none gap-[8px] flex justify-center items-center min-h-[44px] py-[8px] xl:py-0 xl:h-[44px] rounded-[8px] bg-[#612BD3] ps-[20px] pe-[16px]"
                 >
                   {loading && (
                     <div className="absolute left-[50%] top-[50%] -translate-y-[50%] -translate-x-[50%]">
@@ -659,7 +682,7 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
                     disabled={
                       selectedIntegrations.length === 0 || loading || locked
                     }
-                    className="rounded-[8px] z-[300] disabled:cursor-not-allowed disabled:opacity-80 hidden group-hover:flex absolute bottom-[100%] -left-[12px] p-[12px] w-[206px] bg-newBgColorInner"
+                    className="rounded-[8px] z-[300] disabled:cursor-not-allowed disabled:opacity-80 hidden group-hover:flex absolute bottom-[100%] end-0 xl:end-auto xl:-left-[12px] p-[12px] w-[206px] bg-newBgColorInner"
                   >
                     <div className="text-white rounded-[8px] bg-[#D82D7E] h-[44px] w-full flex justify-center items-center post-now">
                       {t('post_now', 'Post Now')}
