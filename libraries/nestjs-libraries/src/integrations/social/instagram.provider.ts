@@ -13,6 +13,7 @@ import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.ab
 import { InstagramDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/instagram.dto';
 import { Integration } from '@prisma/client';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
+import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
 
 @Rules(
@@ -40,6 +41,44 @@ export class InstagramProvider
   dto = InstagramDto;
   maxLength() {
     return 2200;
+  }
+
+  override async checkValidity(
+    [firstPost]: Array<ValidityMedia[]>,
+    settings: any
+  ): Promise<string | true> {
+    if (!firstPost?.length) {
+      return 'Should have at least one media';
+    }
+    if (firstPost.length > 10) {
+      return 'Instagram carousel only supports up to 10 media attachments';
+    }
+    if (settings?.is_trial_reel) {
+      if ((firstPost?.length ?? 0) > 1) {
+        return 'Trial Reels can only have one video';
+      }
+      const hasVideo = firstPost?.some(
+        (f) => (f?.path?.indexOf?.('mp4') ?? -1) > -1
+      );
+      if (!hasVideo) {
+        return 'Trial Reels must be a video';
+      }
+    }
+    if (settings?.audio?.id) {
+      if (settings?.post_type === 'story') {
+        return 'Audio can only be added to Reels, not to Stories';
+      }
+      if ((firstPost?.length ?? 0) > 1) {
+        return 'Audio can only be added to a single video Reel';
+      }
+      const hasVideo = firstPost?.some(
+        (f) => (f?.path?.indexOf?.('mp4') ?? -1) > -1
+      );
+      if (!hasVideo) {
+        return 'Audio can only be added to a video Reel';
+      }
+    }
+    return true;
   }
 
   async refreshToken(refresh_token: string): Promise<AuthTokenDetails> {
@@ -578,9 +617,32 @@ export class InstagramProvider
               )}`
             : ``;
 
+        // audio_configuration is only supported for Reels (single video, not a story)
+        // and only with Facebook Login (not Instagram Login / graph.instagram.com)
+        const audioConfiguration =
+          firstPost?.settings?.audio?.id &&
+          type === 'graph.facebook.com' &&
+          !isStory &&
+          firstPost?.media?.length === 1 &&
+          hasExtension(m.path, 'mp4')
+            ? `&audio_configuration=${encodeURIComponent(
+                JSON.stringify({
+                  audio_id: firstPost.settings.audio.id,
+                  ...(typeof firstPost.settings.audio.audio_volume !==
+                  'undefined'
+                    ? { audio_volume: +firstPost.settings.audio.audio_volume }
+                    : {}),
+                  ...(typeof firstPost.settings.audio.video_volume !==
+                  'undefined'
+                    ? { video_volume: +firstPost.settings.audio.video_volume }
+                    : {}),
+                })
+              )}`
+            : ``;
+
         const { id: photoId } = await (
           await this.fetch(
-            `https://${type}/${META_GRAPH_VERSION}/${id}/media?${mediaType}${isCarousel}${collaborators}${trialParams}&access_token=${accessToken}${caption}`,
+            `https://${type}/${META_GRAPH_VERSION}/${id}/media?${mediaType}${isCarousel}${collaborators}${trialParams}${audioConfiguration}&access_token=${accessToken}${caption}`,
             {
               method: 'POST',
             }
@@ -858,6 +920,55 @@ export class InstagramProvider
         data.q
       )}&access_token=${accessToken}`
     );
+  }
+
+  // https://developers.facebook.com/docs/instagram-platform/content-publishing/audio-api/
+  // empty search_query returns trending audio
+  @Tool({
+    description:
+      'Search audio (music or original sounds) to attach to a Reel via the "audio" setting, an empty query returns trending audio',
+    dataSchema: [
+      {
+        key: 'q',
+        type: 'string',
+        description: 'Search query, leave empty for trending audio',
+      },
+      {
+        key: 'type',
+        type: 'string',
+        description: 'Either "music" or "original_sound", defaults to "music"',
+      },
+    ],
+  })
+  async audioSearch(
+    token: string,
+    data: { q?: string; type?: 'music' | 'original_sound' },
+    internalId?: string
+  ) {
+    const [accessToken, userToken] = token.split('___');
+    const audioType =
+      data?.type === 'original_sound' ? 'original_sound' : 'music';
+
+    const { audio } = await (
+      await this.fetch(
+        `https://graph.facebook.com/${META_GRAPH_VERSION}/ig_audio?audio_type=${audioType}&user_id=${internalId}${
+          data?.q ? `&search_query=${encodeURIComponent(data.q)}` : ''
+        }&access_token=${userToken || accessToken}`
+      )
+    ).json();
+
+    return (audio || []).map((audio: any) => ({
+      id: audio.audio_id,
+      title: audio.title || '',
+      artist: audio.display_artist || audio.ig_username || '',
+      image:
+        audio.cover_artwork_thumbnail_uri ||
+        audio.cover_artwork_thumbnail_url ||
+        audio.profile_picture_url ||
+        '',
+      duration: audio.duration_in_ms || 0,
+      previewUrl: audio.download_url || '',
+    }));
   }
 
   async postAnalytics(
