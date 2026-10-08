@@ -5,15 +5,53 @@ import {
   PostDetails,
   PostResponse,
   SocialProvider,
+  MediaContent,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { timer } from '@gitroom/helpers/utils/timer';
 import dayjs from 'dayjs';
-import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import {
+  BadBody,
+  SocialAbstract,
+} from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { InstagramDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/instagram.dto';
 import { Integration } from '@prisma/client';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
+import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { hasExtension } from '@gitroom/helpers/utils/has.extension';
+import {
+  instagramAudioConfiguration,
+  instagramAudioUserToken,
+  isInstagramAudioId,
+  isInstagramAudioVideo,
+  normalizeInstagramAudio,
+  validateInstagramAudio,
+  InstagramAudioResult,
+  InstagramAudioType,
+} from './instagram.audio';
+
+function audioFailure(message: string): never {
+  throw new BadBody('instagram-audio', '{}', '{}', message);
+}
+
+async function readInstagramAudio(
+  fetchAudio: (url: string) => Promise<Response>,
+  url: string
+): Promise<any> {
+  let response: any;
+  try {
+    response = await (await fetchAudio(url)).json();
+  } catch {
+    audioFailure(
+      'Instagram audio is unavailable for this account; check the connection and try again'
+    );
+  }
+  if (response?.error)
+    audioFailure(
+      'Instagram refused the audio request for this account; check its audio access'
+    );
+  return response;
+}
 
 @Rules(
   "Instagram should have at least one attachment, if it's a story, it can have only one picture"
@@ -40,6 +78,35 @@ export class InstagramProvider
   dto = InstagramDto;
   maxLength() {
     return 2200;
+  }
+
+  async checkValidity(
+    [firstPost]: MediaContent[][],
+    settings: InstagramDto
+  ): Promise<string | true> {
+    if (!firstPost?.length) {
+      return 'Should have at least one media';
+    }
+    if (firstPost.length > 10) {
+      return 'Instagram carousel only supports up to 10 media attachments';
+    }
+    if (settings?.is_trial_reel) {
+      if ((firstPost?.length ?? 0) > 1) {
+        return 'Trial Reels can only have one video';
+      }
+      const hasVideo = firstPost?.some((f) => isInstagramAudioVideo(f?.path));
+      if (!hasVideo) {
+        return 'Trial Reels must be a video';
+      }
+    }
+    const audioValidity = validateInstagramAudio(
+      settings?.audio,
+      settings?.post_type,
+      firstPost,
+      true
+    );
+    if (audioValidity !== true) return audioValidity;
+    return true;
   }
 
   async refreshToken(refresh_token: string): Promise<AuthTokenDetails> {
@@ -97,7 +164,8 @@ export class InstagramProvider
     if (body.toLowerCase().indexOf('session has been invalidated') > -1) {
       return {
         type: 'refresh-token' as const,
-        value: 'You session has been invalidated, this can usually happen from frequent posting, please re-authenticate, and wait 1-2 days before posting again',
+        value:
+          'You session has been invalidated, this can usually happen from frequent posting, please re-authenticate, and wait 1-2 days before posting again',
       };
     }
 
@@ -533,6 +601,40 @@ export class InstagramProvider
     type = 'graph.facebook.com'
   ): Promise<PostResponse[]> {
     const [firstPost] = postDetails;
+    const audio = firstPost?.settings?.audio;
+    const audioValidity = validateInstagramAudio(
+      audio,
+      firstPost?.settings?.post_type,
+      firstPost?.media,
+      type === 'graph.facebook.com'
+    );
+    if (audioValidity !== true) audioFailure(audioValidity);
+    let publishAccessToken = accessToken.split('___')[0];
+    if (audio !== undefined && audio !== null) {
+      if (
+        integration?.providerIdentifier !== 'instagram' ||
+        integration?.internalId !== id
+      ) {
+        audioFailure(
+          'Instagram audio must be published through the selected Instagram account'
+        );
+      }
+      const metadata = await this.audioMetadata(accessToken, audio.id, id);
+      if (
+        audio.audioType !== undefined &&
+        audio.audioType !== metadata.audioType
+      ) {
+        audioFailure(
+          'The selected Instagram audio type changed; choose the audio again'
+        );
+      }
+      if (audio.use_for_ads === true && metadata.isAdsEligible !== true) {
+        audioFailure(
+          'Instagram has not confirmed that this audio is eligible for ads; choose eligible audio'
+        );
+      }
+      publishAccessToken = instagramAudioUserToken(accessToken);
+    }
     console.log('in progress', id);
     const isStory = firstPost.settings.post_type === 'story';
     const isTrialReel = !!firstPost.settings.is_trial_reel;
@@ -578,9 +680,19 @@ export class InstagramProvider
               )}`
             : ``;
 
+        // audio_configuration is only supported for Reels (single video, not a story)
+        // and only with Facebook Login (not Instagram Login / graph.instagram.com)
+        const audioConfiguration = audio
+          ? `&audio_configuration=${encodeURIComponent(
+              JSON.stringify(instagramAudioConfiguration(audio))
+            )}`
+          : '';
+
         const { id: photoId } = await (
           await this.fetch(
-            `https://${type}/${META_GRAPH_VERSION}/${id}/media?${mediaType}${isCarousel}${collaborators}${trialParams}&access_token=${accessToken}${caption}`,
+            `https://${type}/${META_GRAPH_VERSION}/${id}/media?${mediaType}${isCarousel}${collaborators}${trialParams}${audioConfiguration}&access_token=${encodeURIComponent(
+              publishAccessToken
+            )}${caption}`,
             {
               method: 'POST',
             }
@@ -592,7 +704,9 @@ export class InstagramProvider
         while (status === 'IN_PROGRESS') {
           const { status_code } = await (
             await this.fetch(
-              `https://${type}/${META_GRAPH_VERSION}/${photoId}?access_token=${accessToken}&fields=status_code`,
+              `https://${type}/${META_GRAPH_VERSION}/${photoId}?access_token=${encodeURIComponent(
+                publishAccessToken
+              )}&fields=status_code`,
               undefined,
               '',
               0,
@@ -615,7 +729,9 @@ export class InstagramProvider
       for (const mediaCreationId of medias) {
         const { id: mediaId } = await (
           await this.fetch(
-            `https://${type}/${META_GRAPH_VERSION}/${id}/media_publish?creation_id=${mediaCreationId}&access_token=${accessToken}&field=id`,
+            `https://${type}/${META_GRAPH_VERSION}/${id}/media_publish?creation_id=${mediaCreationId}&access_token=${encodeURIComponent(
+              publishAccessToken
+            )}&field=id`,
             {
               method: 'POST',
             }
@@ -625,7 +741,9 @@ export class InstagramProvider
 
         const { permalink } = await (
           await this.fetch(
-            `https://${type}/${META_GRAPH_VERSION}/${mediaId}?fields=permalink&access_token=${accessToken}`
+            `https://${type}/${META_GRAPH_VERSION}/${mediaId}?fields=permalink&access_token=${encodeURIComponent(
+              publishAccessToken
+            )}`
           )
         ).json();
         lastPermalink = permalink;
@@ -642,7 +760,9 @@ export class InstagramProvider
     } else if (medias.length === 1) {
       const { id: mediaId } = await (
         await this.fetch(
-          `https://${type}/${META_GRAPH_VERSION}/${id}/media_publish?creation_id=${medias[0]}&access_token=${accessToken}&field=id`,
+          `https://${type}/${META_GRAPH_VERSION}/${id}/media_publish?creation_id=${
+            medias[0]
+          }&access_token=${encodeURIComponent(publishAccessToken)}&field=id`,
           {
             method: 'POST',
           }
@@ -651,7 +771,9 @@ export class InstagramProvider
 
       const { permalink } = await (
         await this.fetch(
-          `https://${type}/${META_GRAPH_VERSION}/${mediaId}?fields=permalink&access_token=${accessToken}`
+          `https://${type}/${META_GRAPH_VERSION}/${mediaId}?fields=permalink&access_token=${encodeURIComponent(
+            publishAccessToken
+          )}`
         )
       ).json();
 
@@ -670,7 +792,7 @@ export class InstagramProvider
             firstPost?.message
           )}&media_type=CAROUSEL&children=${encodeURIComponent(
             medias.join(',')
-          )}&access_token=${accessToken}`,
+          )}&access_token=${encodeURIComponent(publishAccessToken)}`,
           {
             method: 'POST',
           }
@@ -681,7 +803,9 @@ export class InstagramProvider
       while (status === 'IN_PROGRESS') {
         const { status_code } = await (
           await this.fetch(
-            `https://${type}/${META_GRAPH_VERSION}/${containerId}?fields=status_code&access_token=${accessToken}`,
+            `https://${type}/${META_GRAPH_VERSION}/${containerId}?fields=status_code&access_token=${encodeURIComponent(
+              publishAccessToken
+            )}`,
             undefined,
             '',
             0,
@@ -694,7 +818,9 @@ export class InstagramProvider
 
       const { id: mediaId, ...all4 } = await (
         await this.fetch(
-          `https://${type}/${META_GRAPH_VERSION}/${id}/media_publish?creation_id=${containerId}&access_token=${accessToken}&field=id`,
+          `https://${type}/${META_GRAPH_VERSION}/${id}/media_publish?creation_id=${containerId}&access_token=${encodeURIComponent(
+            publishAccessToken
+          )}&field=id`,
           {
             method: 'POST',
           }
@@ -703,7 +829,9 @@ export class InstagramProvider
 
       const { permalink } = await (
         await this.fetch(
-          `https://${type}/${META_GRAPH_VERSION}/${mediaId}?fields=permalink&access_token=${accessToken}`
+          `https://${type}/${META_GRAPH_VERSION}/${mediaId}?fields=permalink&access_token=${encodeURIComponent(
+            publishAccessToken
+          )}`
         )
       ).json();
 
@@ -858,6 +986,104 @@ export class InstagramProvider
         data.q
       )}&access_token=${accessToken}`
     );
+  }
+
+  // https://developers.facebook.com/docs/instagram-platform/content-publishing/audio-api/
+  // Read current eligibility through this account, immediately before creating a Reel.
+  async audioMetadata(
+    token: string,
+    audioId: string,
+    internalId: string
+  ): Promise<InstagramAudioResult> {
+    if (!isInstagramAudioId(audioId) || !isInstagramAudioId(internalId)) {
+      audioFailure('Invalid Instagram account or audio ID');
+    }
+    if (!instagramAudioUserToken(token))
+      audioFailure(
+        'Instagram audio requires a User access token; reconnect this channel with Facebook Login'
+      );
+    const params = new URLSearchParams({
+      user_id: internalId,
+      access_token: instagramAudioUserToken(token),
+    });
+    const response = await readInstagramAudio(
+      (url) => this.fetch(url),
+      `https://graph.facebook.com/${META_GRAPH_VERSION}/${audioId}?${params}`
+    );
+    let metadata: InstagramAudioResult;
+    try {
+      metadata = normalizeInstagramAudio(response);
+    } catch {
+      audioFailure(
+        'Instagram returned incomplete audio metadata; choose the audio again'
+      );
+    }
+    if (metadata.id !== audioId)
+      audioFailure(
+        'Instagram returned a different audio asset; choose the audio again'
+      );
+    return metadata;
+  }
+
+  @Tool({
+    description:
+      'Search music or original sounds for a Reel; an empty query returns trending audio for this Instagram account. Audio IDs and permissions are checked again before publishing.',
+    dataSchema: [
+      {
+        key: 'q',
+        type: 'string',
+        description: 'Search query, leave empty for trending audio',
+      },
+      {
+        key: 'type',
+        type: 'string',
+        description: 'music or original_sound; defaults to music',
+      },
+    ],
+  })
+  async audioSearch(
+    token: string,
+    data: { q?: string; type?: InstagramAudioType },
+    internalId?: string
+  ): Promise<InstagramAudioResult[]> {
+    if (!isInstagramAudioId(internalId))
+      audioFailure(
+        'Select a connected Instagram account before searching audio'
+      );
+    if (
+      data?.q !== undefined &&
+      (typeof data.q !== 'string' || data.q.length > 200)
+    ) {
+      audioFailure(
+        'Instagram audio search must be a string of at most 200 characters'
+      );
+    }
+    const audioType = data?.type === undefined ? 'music' : data.type;
+    if (audioType !== 'music' && audioType !== 'original_sound')
+      audioFailure('Invalid Instagram audio search type');
+    if (!instagramAudioUserToken(token))
+      audioFailure(
+        'Instagram audio requires a User access token; reconnect this channel with Facebook Login'
+      );
+    const params = new URLSearchParams({
+      audio_type: audioType,
+      user_id: internalId,
+      access_token: instagramAudioUserToken(token),
+    });
+    if (data?.q) params.set('search_query', data.q);
+    const response = await readInstagramAudio(
+      (url) => this.fetch(url),
+      `https://graph.facebook.com/${META_GRAPH_VERSION}/ig_audio?${params}`
+    );
+    if (!Array.isArray(response?.audio))
+      audioFailure('Instagram returned an incomplete audio catalog; try again');
+    try {
+      return response.audio.map((item: any) =>
+        normalizeInstagramAudio(item, audioType)
+      );
+    } catch {
+      audioFailure('Instagram returned an invalid audio catalog; try again');
+    }
   }
 
   async postAnalytics(

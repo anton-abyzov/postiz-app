@@ -53,11 +53,23 @@ import {
   socialIntegrationList,
   IntegrationManager,
 } from '@gitroom/nestjs-libraries/integrations/integration.manager';
-import { getValidationSchemas } from '@gitroom/nestjs-libraries/chat/validation.schemas.helper';
+import {
+  getValidationSchemas,
+  ValidationSchemas,
+} from '@gitroom/nestjs-libraries/chat/validation.schemas.helper';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
+
+type IntegrationSettingsResponse = {
+  output: {
+    rules: string;
+    maxLength: number;
+    settings: ValidationSchemas[string] | string;
+    tools: ReturnType<IntegrationManager['getAllTools']>[string];
+  };
+};
 
 @ApiTags('Public API')
 @Controller('/public/v1')
@@ -234,6 +246,9 @@ export class PublicIntegrationsController {
         identifier: org.providerIdentifier,
         picture: org.picture,
         disabled: org.disabled,
+        refreshNeeded: org.refreshNeeded,
+        inBetweenSteps: org.inBetweenSteps,
+        tokenExpiration: org.tokenExpiration,
         profile: org.profile,
         customer: org.customer
           ? {
@@ -344,7 +359,7 @@ export class PublicIntegrationsController {
   async getIntegrationSettings(
     @GetOrgFromRequest() org: Organization,
     @Param('id') id: string
-  ) {
+  ): Promise<IntegrationSettingsResponse> {
     Sentry.metrics.count('public_api-request', 1);
     const loadIntegration = await this._integrationService.getIntegrationById(
       org.id,
@@ -362,7 +377,7 @@ export class PublicIntegrationsController {
 
     if (!integration) {
       return {
-        output: { rules: '', maxLength: 0, settings: {}, tools: [] as any[] },
+        output: { rules: '', maxLength: 0, settings: {}, tools: [] },
       };
     }
 

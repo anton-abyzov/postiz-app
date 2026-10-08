@@ -6,7 +6,9 @@ import { ValidationTypes } from 'class-validator';
 // @ts-ignore
 import { defaultMetadataStorage } from 'class-transformer/cjs/storage';
 
-export function getValidationSchemas() {
+export type ValidationSchemas = ReturnType<typeof validationMetadatasToSchemas>;
+
+export function getValidationSchemas(): ValidationSchemas {
   return validationMetadatasToSchemas({
     classTransformerMetadataStorage: defaultMetadataStorage,
     additionalConverters: {

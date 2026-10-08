@@ -25,6 +25,10 @@ import utc from 'dayjs/plugin/utc';
 import { AutopostRepository } from '@gitroom/nestjs-libraries/database/prisma/autopost/autopost.repository';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
 import { TemporalService } from 'nestjs-temporal-core';
+import {
+  isMetaPageProvider,
+  metaPageTokenExpirationDate,
+} from '@gitroom/nestjs-libraries/integrations/social/meta.token-expiration';
 
 dayjs.extend(utc);
 
@@ -313,6 +317,7 @@ export class IntegrationService {
       org,
       String(getIntegrationInformation.id)
     );
+    const isMetaPage = isMetaPageProvider(getIntegration.providerIdentifier);
     await this._integrationRepository.updateIntegration(id, {
       picture: getIntegrationInformation.picture,
       internalId: String(getIntegrationInformation.id),
@@ -320,6 +325,13 @@ export class IntegrationService {
       name: getIntegrationInformation.name,
       inBetweenSteps: false,
       token: getIntegrationInformation.access_token,
+      ...(isMetaPage
+        ? {
+            tokenExpiration: metaPageTokenExpirationDate(),
+            refreshNeeded: false,
+            disabled: false,
+          }
+        : {}),
       profile: getIntegrationInformation.username,
     });
 
