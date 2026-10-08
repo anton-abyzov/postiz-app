@@ -6,6 +6,7 @@ import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { IntegrationTimeDto } from '@gitroom/nestjs-libraries/dtos/integrations/integration.time.dto';
 import { UploadFactory } from '@gitroom/nestjs-libraries/upload/upload.factory';
 import { PlugDto } from '@gitroom/nestjs-libraries/dtos/plugs/plug.dto';
+import { META_PAGE_PROVIDER_IDENTIFIERS } from '@gitroom/nestjs-libraries/integrations/social/meta.token-expiration';
 
 @Injectable()
 export class IntegrationRepository {
@@ -332,6 +333,9 @@ export class IntegrationRepository {
       where: {
         tokenExpiration: {
           lte: dayjs().add(1, 'day').toDate(),
+        },
+        providerIdentifier: {
+          notIn: META_PAGE_PROVIDER_IDENTIFIERS,
         },
         inBetweenSteps: false,
         deletedAt: null,

@@ -234,6 +234,9 @@ export class PublicIntegrationsController {
         identifier: org.providerIdentifier,
         picture: org.picture,
         disabled: org.disabled,
+        refreshNeeded: org.refreshNeeded,
+        inBetweenSteps: org.inBetweenSteps,
+        tokenExpiration: org.tokenExpiration,
         profile: org.profile,
         customer: org.customer
           ? {
