@@ -598,7 +598,7 @@ export const ManageModal: FC<AddEditModalProps> = (props) => {
               <RepeatComponent repeat={repeater} onChange={setRepeater} />
             )}
             <CopilotPopup
-              className="max-xl:!static max-xl:ms-auto"
+              className="!static ms-auto xl:!fixed"
               hitEscapeToClose={false}
               clickOutsideToClose={true}
               instructions={`
