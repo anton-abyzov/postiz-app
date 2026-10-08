@@ -23,7 +23,7 @@ const nextConfig = {
   reactStrictMode: false,
   transpilePackages: ['crypto-hash'],
   // jsdom loads its stylesheet from disk; keep its runtime assets outside webpack.
-  serverExternalPackages: ['jsdom'],
+  serverExternalPackages: ['isomorphic-dompurify', 'jsdom'],
   // Enable production sourcemaps for Sentry
   productionBrowserSourceMaps: true,
 
